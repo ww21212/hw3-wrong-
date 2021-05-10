@@ -79,8 +79,6 @@ float angle = 0;
 int16_t PDataXYZ[3] = {0};
 int16_t gDataXYZ[3] = {0};
 int num = 0; // event number
-//void start_tad();
-//void set_mode(int i);
 
 void mode_sl(Arguments *in, Reply *out);
 BufferedSerial pc(USBTX, USBRX);
@@ -180,6 +178,70 @@ void publish_message(MQTT::Client<MQTTNetwork, Countdown> *client)
    mode_G = 0;
 }
 
+void tilt_angle(MQTT::Client<MQTTNetwork, Countdown> *client)
+{
+   //uLCD.cls();
+   //thr_G_UI.terminate();
+   BSP_ACCELERO_Init();
+   //BSP_ACCELERO_AccGetXYZ(PDataXYZ);
+   BSP_ACCELERO_AccGetXYZ(gDataXYZ);
+   int Axis[3];
+   for (int i = 0; i < 3; i++)
+   {
+      Axis[i] = gDataXYZ[i];
+   }
+   while (1)
+   {
+      if (mode_T)
+      {
+         BSP_ACCELERO_AccGetXYZ(gDataXYZ);
+         led2 = !led2;
+         long int dotproduct = 0;
+         long int normA = 0;
+         long int normg = 0;
+         for (int i = 0; i < 3; i++)
+         {
+            dotproduct += gDataXYZ[i] * Axis[i];
+            normA += Axis[i] * Axis[i];
+            normg += gDataXYZ[i] * gDataXYZ[i];
+         }
+
+         float cosvalue = dotproduct / sqrt(normg) / sqrt(normA);
+         angle = acos(cosvalue) * 180 / 3.1415926;
+         uLCD.locate(1, 2);
+         uLCD.printf("Angle threshold: \n %d", threshold);
+         uLCD.locate(1, 6);
+         uLCD.printf("Tilt angle = \n %.3f", angle);
+         ThisThread::sleep_for(100ms);
+         if (angle >= threshold)
+         {
+            num++;
+
+            MQTT::Message message;
+            char buff[100];
+            sprintf(buff, "number of event = %d", num);
+            message.qos = MQTT::QOS0;
+            message.retained = false;
+            message.dup = false;
+            message.payload = (void *)buff;
+            message.payloadlen = strlen(buff) + 1;
+            int rc = client->publish(topic, message);
+
+            printf("rc:  %d\r\n", rc);
+            printf("Puslish message: %s\r\n", buff);
+            if (num >= 5)
+            {
+               mode_T = 0;
+            }
+         }
+      }
+      else
+      {
+         led2 = 0;
+      }
+   }
+}
+
 void close_mqtt()
 {
    closed = true;
@@ -240,6 +302,7 @@ void w_m()
 
    mqtt_thread.start(callback(&mqtt_queue, &EventQueue::dispatch_forever));
    btn.rise(mqtt_queue.event(&publish_message, &client));
+   thr_T_A_D.start(callback(&tilt_angle, &client));
 
    int num = 0;
    while (num != 5)
@@ -273,7 +336,7 @@ void w_m()
 int main()
 {
    thr_G_UI.start(G_UI);
-   thr_T_A_D.start(T_A_D);
+   //thr_T_A_D.start(T_A_D);
    BSP_ACCELERO_Init();
    char buf[256], outbuf[256];
    FILE *devin = fdopen(&pc, "r");
@@ -465,94 +528,6 @@ void G_UI()
    }
 }
 
-void T_A_D()
-{
-   //uLCD.cls();
-   //thr_G_UI.terminate();
-   MQTT::Client<MQTTNetwork, Countdown> *client;
-   BSP_ACCELERO_Init();
-   //BSP_ACCELERO_AccGetXYZ(PDataXYZ);
-   BSP_ACCELERO_AccGetXYZ(gDataXYZ);
-   int Axis[3];
-   for (int i = 0; i < 3; i++)
-   {
-      Axis[i] = gDataXYZ[i];
-   }
-   while (1)
-   {
-      if (mode_T)
-      {
-         BSP_ACCELERO_AccGetXYZ(gDataXYZ);
-         led2 = !led2;
-         long int dotproduct = 0;
-         long int normA = 0;
-         long int normg = 0;
-         for (int i = 0; i < 3; i++)
-         {
-            dotproduct += gDataXYZ[i] * Axis[i];
-            normA += Axis[i] * Axis[i];
-            normg += gDataXYZ[i] * gDataXYZ[i];
-         }
-
-         float cosvalue = dotproduct / sqrt(normg) / sqrt(normA);
-         angle = acos(cosvalue) * 180 / 3.1415926;
-         uLCD.locate(1, 2);
-         uLCD.printf("Angle threshold: \n %d", threshold);
-         uLCD.locate(1, 6);
-         uLCD.printf("Tilt angle = \n %.3f", angle);
-         ThisThread::sleep_for(100ms);
-         if (angle >= threshold)
-         {
-            num++;
-
-            MQTT::Message message;
-            char buff[100];
-            sprintf(buff, "number of event = %d", num);
-            message.qos = MQTT::QOS0;
-            message.retained = false;
-            message.dup = false;
-            message.payload = (void *)buff;
-            message.payloadlen = strlen(buff) + 1;
-            int rc = client->publish(topic, message);
-
-            printf("rc:  %d\r\n", rc);
-            printf("Puslish message: %s\r\n", buff);
-            if (num >= 5)
-            {
-               mode_T = 0;
-            }
-         }
-      }
-      else
-      {
-         led2 = 0;
-      }
-   }
-}
-/*
-void set_mode(int i)
-{
-   if (i == 1)
-   {
-      mode_G = 1;
-      mode_T = 0;
-      printf("mode_G = %d, mode_T = %d\n", mode_G, mode_T);
-   }
-   else if (i == 2)
-   {
-      mode_T = 1;
-      mode_G = 0;
-      printf("mode_G = %d, mode_T = %d\n", mode_G, mode_T);
-   }
-   else
-   {
-      mode_G = 0;
-      mode_T = 0;
-      printf("mode_G = %d, mode_T = %d\n", mode_G, mode_T);
-   }
-   return;
-}
-*/
 void mode_sl(Arguments *in, Reply *out)
 {
    int mode = in->getArg<int>();
