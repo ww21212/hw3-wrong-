@@ -66,6 +66,7 @@ uLCD_4DGL uLCD(D1, D0, D2); // serial tx, serial rx, reset pin;
 
 DigitalOut led1(LED1);
 DigitalOut led2(LED2);
+DigitalOut led3(LED3);
 int threshold = 30;
 
 Thread thr_G_UI(osPriorityNormal, 8 * 1024); // gesture UI
@@ -175,7 +176,7 @@ void publish_message(MQTT::Client<MQTTNetwork, Countdown> *client)
 
    printf("rc:  %d\r\n", rc);
    printf("Puslish message: %s\r\n", buff);
-   mode_G = 0;
+   //mode_G = 0;
 }
 
 void tilt_angle(MQTT::Client<MQTTNetwork, Countdown> *client)
@@ -195,7 +196,7 @@ void tilt_angle(MQTT::Client<MQTTNetwork, Countdown> *client)
       if (mode_T)
       {
          BSP_ACCELERO_AccGetXYZ(gDataXYZ);
-         led2 = !led2;
+         led2 = 1;
          long int dotproduct = 0;
          long int normA = 0;
          long int normg = 0;
@@ -212,14 +213,18 @@ void tilt_angle(MQTT::Client<MQTTNetwork, Countdown> *client)
          uLCD.printf("Angle threshold: \n %d", threshold);
          uLCD.locate(1, 6);
          uLCD.printf("Tilt angle = \n %.3f", angle);
-         ThisThread::sleep_for(100ms);
-         if (angle >= threshold)
+         ThisThread::sleep_for(250ms);
+         if (angle < 5)
+         {
+            led3 = !led3;
+         }
+         if (angle >= threshold && num < 5)
          {
             num++;
 
             MQTT::Message message;
             char buff[100];
-            sprintf(buff, "number of event = %d", num);
+            sprintf(buff, "The %d time(s)", num);
             message.qos = MQTT::QOS0;
             message.retained = false;
             message.dup = false;
@@ -232,6 +237,7 @@ void tilt_angle(MQTT::Client<MQTTNetwork, Countdown> *client)
             if (num >= 5)
             {
                mode_T = 0;
+               // num = 0;
             }
          }
       }
